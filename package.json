@@ -1,0 +1,17 @@
+{
+    "dependencies": {
+        "@airtable/blocks": "1.0.0",
+        "fancygrid": "^1.7.116",
+        "fancygrid-react": "^1.0.3",
+        "react": "^16.13.0",
+        "react-dom": "^16.13.0"
+    },
+    "devDependencies": {
+        "eslint": "^6.8.0",
+        "eslint-plugin-react": "^7.18.3",
+        "eslint-plugin-react-hooks": "^2.5.0"
+    },
+    "scripts": {
+        "lint": "eslint frontend"
+    }
+}
