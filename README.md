@@ -14,4 +14,5 @@ It used 3-rd party JavaScript Grid library `FancyGrid`.
 
 Example:
 
+![Screenshot](/dealer-sales-report.png)
 ![Screenshot](/dealer-sales.png)
