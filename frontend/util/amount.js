@@ -2,7 +2,7 @@ function sortByAmount(data){
   return data.sort(compareDate);
 }
 
-function compareDate(a, b) {
+function compareDate(b, a) {
   const bandA = a.amount;
   const bandB = b.amount;
 
@@ -17,6 +17,20 @@ function compareDate(a, b) {
   return comparison;
 }
 
+function sortByAmountGroups(groups){
+  let unsortedGroups = [];
+
+  for(let p in groups){
+    let row = groups[p];
+    row.name = p;
+    unsortedGroups.push(row);
+  }
+
+  let sortedGroups = sortByAmount(unsortedGroups);
+
+  return sortedGroups;
+}
+
 export {
-  sortByAmount
+  sortByAmountGroups
 };

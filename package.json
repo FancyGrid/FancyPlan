@@ -1,7 +1,7 @@
 {
     "dependencies": {
         "@airtable/blocks": "1.0.0",
-        "fancygrid": "^1.7.116",
+        "fancygrid": "^1.7.119",
         "fancygrid-react": "^1.0.3",
         "react": "^16.13.0",
         "react-dom": "^16.13.0"

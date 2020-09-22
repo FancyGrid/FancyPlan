@@ -8,11 +8,17 @@ import {
 import React from 'react';
 import Fancy from 'fancygrid';
 import { FancyGridReact } from 'fancygrid-react';
-import {sortByDate, getMonthTitle, getQuarterTitle} from  './util/date';
-import {sortByAmount} from  './util/amount';
-loadCSSFromURLAsync('https://fancygrid.com/temp/air.css?_dc=22');
+import {sortByDate, getQuarterTitle, getMonthTitle} from './util/date';
+import {sortByAmountGroups} from  './util/amount';
+import {toggleColumns} from './grid/columns';
+import {prepareData} from './util/data';
+import {getQuarterForecastColumnIndexes, getMonthForecastColumnIndexes} from './grid/indexes';
+import {median, mean, standardDeviation} from "./util/stat";
+
+loadCSSFromURLAsync('https://fancygrid.com/temp/air.css?_dc=26');
 
 let globalConfig;
+let aliasGroupNames = {};
 
 const NOT_GROUPED_TEXT = 'Not Grouped';
 
@@ -33,14 +39,16 @@ function App() {
     type: 'order',
     locked: true
   },{
-    //type: 'string',
     title: 'Name',
     type: 'combo',
     minListWidth: 120,
+    autoWidth: true,
+    maxAutoWidth: 120,
     sortable: true,
     multiSelect: true,
     itemCheckBox: true,
     filter: {
+      editable: false,
       header: true
     },
     headerCls: 'header-cell-name',
@@ -49,7 +57,19 @@ function App() {
   }];
   data = [{'name': 'All'}];
 
+  let tableGroups = base.getTableByNameIfExists('Groups');
+
+  if(tableGroups){
+    let records = useRecords(tableGroups);
+
+    prepareAliasGroups(records);
+  }
+
   tables.forEach((table)=>{
+    if(table.name === 'Groups'){
+      return;
+    }
+
     tableNames.push(table.name);
   });
 
@@ -62,31 +82,34 @@ function App() {
     let table = base.getTableByName(tableName);
     const records = useRecords(table);
 
-    prepairData(records);
+    allRecords = allRecords.concat(prepareData(records, aliasGroupNames));
   }
 
   allRecords = sortByDate(allRecords);
+
   processData(allRecords);
 
   let groups = generateGroups(allRecords);
 
-  let row = {
-    name: NOT_GROUPED_TEXT
-  };
+  if(groups[NOT_GROUPED_TEXT]){
+    let row = {
+      name: NOT_GROUPED_TEXT
+    };
 
-  for(let month in groups[NOT_GROUPED_TEXT].months){
-    row[month.replace('-', '')] = groups[NOT_GROUPED_TEXT].months[month];
+    for(let month in groups[NOT_GROUPED_TEXT].months){
+      row[month.replace('-', '')] = groups[NOT_GROUPED_TEXT].months[month];
+    }
+
+    for(let quarter in groups[NOT_GROUPED_TEXT].quarters){
+      row[quarter.replace(' ', '')] = groups[NOT_GROUPED_TEXT].quarters[quarter];
+    }
+
+    for(let year in groups[NOT_GROUPED_TEXT].years){
+      row[year] = groups[NOT_GROUPED_TEXT].years[year];
+    }
+
+    data.push(row);
   }
-
-  for(let quarter in groups[NOT_GROUPED_TEXT].quarters){
-    row[quarter.replace(' ', '')] = groups[NOT_GROUPED_TEXT].quarters[quarter];
-  }
-
-  for(let year in groups[NOT_GROUPED_TEXT].years){
-    row[year] = groups[NOT_GROUPED_TEXT].years[year];
-  }
-
-  data.push(row);
 
   delete groups[NOT_GROUPED_TEXT];
   let sortedByAmountGroups = sortByAmountGroups(groups);
@@ -122,130 +145,27 @@ function App() {
   );
 }
 
-function prepairData(records){
+function prepareAliasGroups(records){
   records.forEach((record)=> {
-    let value = record.getCellValue('Amount');
-    let group = record.getCellValue('Name');
+    let name = record.getCellValue('Name');
+    let a = record.getCellValue('Alias');
 
-    let splittedDate = record.name.split('.');
-
-    allRecords.push({
-      date: record.name,
-      dateValue: +new Date(splittedDate[2], splittedDate[1], splittedDate[0]),
-      amount: Number(value),
-      name: group
-    });
-  });
-}
-
-function processData(records){
-  let months = {};
-  let monthsOrder = [];
-  let quarters = {};
-  let years = {};
-  let yearsOrder = [];
-
-  let currency = globalConfig.get('currency') || Fancy.currency.USD;
-
-  records.forEach((record)=>{
-    let dateSplitted = record.date.split('.');
-    let month = dateSplitted[1];
-    let year = dateSplitted[2];
-    let quarter = getQuarterTitle(month + '-' + year);
-
-    if(months[month + '-' + year] === undefined){
-      months[month + '-' + year] = 0;
-      monthsOrder.push(month + '-' + year);
-    }
-
-    if(quarters[quarter] === undefined){
-      quarters[quarter] = 0;
-    }
-
-    if(years[year] === undefined){
-      years[year] = 0;
-      yearsOrder.push(year);
-    }
-
-    months[month + '-' + year] += record.amount;
-    quarters[quarter] += record.amount;
-    years[year] += record.amount;
-  });
-
-  let usingQuarter;
-  let quarterColumns = [];
-
-  monthsOrder.forEach((month)=>{
-    let monthSplitted = month.split('-');
-    let monthIndex = month.replace('-', '');
-
-    data[0][monthIndex] = Number(months[month].toFixed(2));
-
-    let quarter = getQuarterTitle(month);
-    if(usingQuarter !== quarter) {
-      usingQuarter = quarter;
-      quarterColumns = [];
-    }
-
-    quarterColumns.push({
-      title: getMonthTitle(month),
-      type: 'currency',
-      isMonth: true,
-      currency: currency,
-      sortable: true,
-      index: monthIndex,
-      autoWidth: true
-    });
-
-    switch (Number(monthSplitted[0])){
-      case 2:
-      case 5:
-      case 8:
-      case 11:
-        var quarterIndex = quarter.replace(' ', '').toLocaleLowerCase();
-        data[0][quarterIndex] = Number(quarters[quarter].toFixed(2));
-
-        quarterColumns.push({
-          title: quarter,
-          type: 'currency',
-          isQuarter: true,
-          headerCls: 'header-cell-quarter',
-          cls: 'column-quarter',
-          currency: currency,
-          sortable: true,
-          index: quarter.toLocaleLowerCase().replace(' ', ''),
-          autoWidth: true
-        });
-
-        columns.push({
-          title: quarter,
-          headerCls: 'header-cell-quarter',
-          columns: quarterColumns
-        });
-        break;
-    }
-  });
-
-  yearsOrder.forEach((year)=>{
-    data[0][year] = years[year];
-
-    columns.push({
-      title: year,
-      type: 'currency',
-      isAnnual: true,
-      headerCls: 'header-cell-annual',
-      currency: currency,
-      sortable: true,
-      index: year,
-      align: 'center',
-      rightLocked: true,
-      autoWidth: true
-    });
+    aliasGroupNames[name] = a;
   });
 }
 
 function getConfig(){
   let currency = globalConfig.get('currency') || Fancy.currency.USD;
+  let groupNotRepeatedData = true;
+  let precision = false;
+
+  if(globalConfig.get('groupNotRepeatedData') !== undefined){
+    groupNotRepeatedData = globalConfig.get('groupNotRepeatedData');
+  }
+
+  if(globalConfig.get('precision') !== undefined){
+    precision = globalConfig.get('precision');
+  }
 
   return {
     id: 'financial-grid',
@@ -260,7 +180,7 @@ function getConfig(){
     defaults: {
       width: 85,
       resizable: true,
-      //sortable: true
+      sortable: true
     },
     cellStylingCls: ['low-value', 'high-value'],
     columns: columns,
@@ -286,45 +206,27 @@ function getConfig(){
         pressed: true
       }],
       events: [{
-        toggle: function (segbutton, button, value, values) {
-          let grid = Fancy.getWidget('financial-grid');
-
-          if (value === false) {
-            if (values[0] === false) {
-              let indexes = getMonthColumnIndexes();
-              grid.hideColumn(indexes);
-            }
-
-            if (values[1] === false) {
-              let indexes = getQuarterColumnIndexes();
-              grid.hideColumn(indexes);
-            }
-
-            if (values[2] === false) {
-              let indexes = getYearColumnIndexes();
-              grid.hideColumn(indexes);
-            }
-          }
-
-          if (value === true) {
-            if (values[0] === true) {
-              let indexes = getMonthColumnIndexes();
-              grid.showColumn(indexes);
-            }
-
-            if (values[1] === true) {
-              let indexes = getQuarterColumnIndexes();
-              grid.showColumn(indexes);
-            }
-
-            if (values[2] === true) {
-              let indexes = getYearColumnIndexes();
-              grid.showColumn(indexes);
-            }
-          }
-        }
+        toggle: toggleColumns
       }]
+    },'->',{
+      type: 'button',
+      enableToggle: true,
+      text: 'Extra',
+      pressed: globalConfig.get('extra') === true,
+      handler: function(button){
+        let grid = Fancy.getWidget('financial-grid');
+
+        if(!button.pressed){
+          grid.showBar('subtbar');
+          globalConfig.setAsync('extra', true);
+        }
+        else{
+          grid.hideBar('subtbar');
+          globalConfig.setAsync('extra', false);
+        }
+      }
     }],
+    subTBarHidden: globalConfig.get('extra') !== true,
     subTBar: [{
       type: 'segbutton',
       items: [{
@@ -339,72 +241,76 @@ function getConfig(){
       }, {
         text: Fancy.currency.JPY,
         pressed: currency === Fancy.currency.JPY
-      },{
+      }, {
         text: Fancy.currency.RUB,
         pressed: currency === Fancy.currency.RUB
       }],
       events: [{
-        toggle: function(segbutton, button) {
+        toggle: function (segbutton, button) {
           globalConfig.setAsync('currency', button.text);
           let grid = Fancy.getWidget('financial-grid');
 
           grid.showLoadMask('Reload page');
         }
       }]
+    },{
+      type: 'button',
+      enableToggle: true,
+      text: ".00",
+      pressed: precision === true,
+      handler: function(button){
+        globalConfig.setAsync('precision', !button.pressed);
+
+        let grid = Fancy.getWidget('financial-grid');
+
+        grid.showLoadMask('Reload page');
+      }
+    },{
+      type: 'button',
+      enableToggle: true,
+      text: 'Group Not Repeated',
+      pressed: groupNotRepeatedData,
+      handler: function(button){
+        globalConfig.setAsync('groupNotRepeatedData', !button.pressed);
+
+        let grid = Fancy.getWidget('financial-grid');
+
+        grid.showLoadMask('Reload page');
+      }
+    },{
+      type: 'button',
+      enableToggle: true,
+      text: 'Forecast',
+      pressed: globalConfig.get('forecast') === true,
+      handler: function(button){
+        let grid = Fancy.getWidget('financial-grid');
+        let quarterIndexes = getQuarterForecastColumnIndexes();
+        let monthIndexes = getMonthForecastColumnIndexes();
+
+        if(!button.pressed){
+          grid.showColumn(monthIndexes);
+          grid.showColumn(quarterIndexes);
+          globalConfig.setAsync('forecast', true);
+        }
+        else{
+          grid.hideColumn(monthIndexes);
+          grid.hideColumn(quarterIndexes);
+          globalConfig.setAsync('forecast', false);
+        }
+      }
     }]
   };
-}
-
-function getMonthColumnIndexes(){
-  let grid = Fancy.getWidget('financial-grid'),
-    columns = grid.getColumns(),
-    indexes = [];
-
-  Fancy.each(columns, (column)=>{
-    if(column.isMonth){
-      indexes.push(column.index);
-    }
-  });
-
-  return indexes;
-}
-
-function getQuarterColumnIndexes(){
-  let grid = Fancy.getWidget('financial-grid'),
-    columns = grid.getColumns(),
-    indexes = [];
-
-  Fancy.each(columns, (column)=>{
-    if(column.isQuarter){
-      indexes.push(column.index);
-    }
-  });
-
-  return indexes;
-}
-
-function getYearColumnIndexes(){
-  let grid = Fancy.getWidget('financial-grid'),
-    columns = grid.getColumns(),
-    indexes = [];
-
-  Fancy.each(columns, (column)=>{
-    if(column.isAnnual){
-      indexes.push(column.index);
-    }
-  });
-
-  return indexes;
 }
 
 function generateGroups(records){
   let groups = {};
 
   records.forEach((record)=>{
+    let name = record.name;
     let amount = Number(Number(record.amount).toFixed(2));
 
-    if(groups[record.name] === undefined){
-      groups[record.name] = {
+    if(groups[name] === undefined){
+      groups[name] = {
         value: 0,
         amount: 0,
         months: {},
@@ -413,40 +319,46 @@ function generateGroups(records){
       };
     }
 
-    groups[record.name].value++;
+    let group = groups[name];
+
+    group.value++;
 
     let splittedDate = record.date.split('.');
     let month = splittedDate[1] + '-' + splittedDate[2];
     let year = splittedDate[2];
-    let quarter = getQuarterTitle(month).toLocaleLowerCase();
+    let quarter = getQuarterTitle(splittedDate[1] + '-' + splittedDate[2]).toLocaleLowerCase();
 
-    if(groups[record.name].months[month] === undefined){
-      groups[record.name].months[month] = 0;
+    if(group.months[month] === undefined){
+      group.months[month] = 0;
     }
 
-    if(groups[record.name].years[year] === undefined){
-      groups[record.name].years[year] = 0;
+    if(group.years[year] === undefined){
+      group.years[year] = 0;
     }
 
-    if(groups[record.name].quarters[quarter] === undefined){
-      groups[record.name].quarters[quarter] = 0;
+    if(group.quarters[quarter] === undefined){
+      group.quarters[quarter] = 0;
     }
 
-    groups[record.name].months[month] += amount;
-    groups[record.name].quarters[quarter] = amount;
-    groups[record.name].years[year] += amount;
-    groups[record.name].amount += amount;
+    group.months[month] += amount;
+    group.quarters[quarter] += amount;
+    group.years[year] += amount;
+    group.amount += amount;
 
-    groups[record.name].months[month] = Number(groups[record.name].months[month].toFixed(2));
-    groups[record.name].quarters[quarter] = Number(groups[record.name].quarters[quarter].toFixed(2));
-    groups[record.name].years[year] = Number(groups[record.name].years[year].toFixed(2));
-    groups[record.name].amount = Number(groups[record.name].amount.toFixed(2));
+    group.months[month] = Number(group.months[month].toFixed(2));
+    group.quarters[quarter] = Number(group.quarters[quarter].toFixed(2));
+    group.years[year] = Number(group.years[year].toFixed(2));
+    group.amount = Number(group.amount.toFixed(2));
   });
 
-  delete groups[null];
+  let groupNotRepeatedData = true;
+
+  if(globalConfig.get('groupNotRepeatedData') !== undefined){
+    groupNotRepeatedData = globalConfig.get('groupNotRepeatedData');
+  }
 
   for(let p in groups) {
-    if (groups[p].value < 2) {
+    if (groups[p].value === 1 && groupNotRepeatedData && groups[p].amount < 3000) {
       groups[NOT_GROUPED_TEXT] = groups[NOT_GROUPED_TEXT] || {
         value: 0,
         months: {},
@@ -491,18 +403,236 @@ function generateGroups(records){
   return groups;
 }
 
-function sortByAmountGroups(groups){
-  let unsortedGroups = [];
+function processData(records){
+  let months = {};
+  let monthsOrder = [];
+  let quarters = {};
+  let years = {};
+  let yearsOrder = [];
 
-  for(let p in groups){
-    let row = groups[p];
-    row.name = p;
-    unsortedGroups.push(row);
+  let currency = globalConfig.get('currency') || Fancy.currency.USD;
+
+  records.forEach((record)=>{
+    let dateSplitted = record.date.split('.');
+    let month = dateSplitted[1];
+    let year = dateSplitted[2];
+    let quarter = getQuarterTitle(month + '-' + year);
+
+    if(months[month + '-' + year] === undefined){
+      months[month + '-' + year] = 0;
+      monthsOrder.push(month + '-' + year);
+    }
+
+    if(quarters[quarter] === undefined){
+      quarters[quarter] = 0;
+    }
+
+    if(years[year] === undefined){
+      years[year] = 0;
+      yearsOrder.push(year);
+    }
+
+    months[month + '-' + year] += record.amount;
+    quarters[quarter] += record.amount;
+    years[year] += record.amount;
+  });
+
+  let usingQuarter;
+  let quarterColumns = [];
+
+  let foreCastMonthsOrder = generateForeCastMonths(monthsOrder);
+
+  monthsOrder.forEach((month)=>{
+    let monthSplitted = month.split('-');
+    let monthIndex = month.replace('-', '');
+
+    data[0][monthIndex] = Number(months[month].toFixed(2));
+
+    let quarter = getQuarterTitle(month);
+    if(usingQuarter !== quarter) {
+      usingQuarter = quarter;
+      quarterColumns = [];
+    }
+
+    quarterColumns.push({
+      title: getMonthTitle(month),
+      type: 'currency',
+      precision: globalConfig.get('precision')?2: 0,
+      isMonth: true,
+      currency: currency,
+      sortable: true,
+      index: monthIndex,
+      autoWidth: true
+    });
+
+    switch (Number(monthSplitted[0])){
+      case 3:
+      case 6:
+      case 9:
+      case 12:
+        var quarterIndex = quarter.replace(' ', '').toLocaleLowerCase();
+        data[0][quarterIndex] = Number(quarters[quarter].toFixed(2));
+
+        quarterColumns.push({
+          title: quarter,
+          type: 'currency',
+          precision: globalConfig.get('precision')?2: 0,
+          isQuarter: true,
+          headerCls: 'header-cell-quarter',
+          cls: 'column-quarter',
+          currency: currency,
+          sortable: true,
+          index: quarter.toLocaleLowerCase().replace(' ', ''),
+          autoWidth: true
+        });
+
+        columns.push({
+          title: quarter,
+          headerCls: 'header-cell-quarter',
+          columns: quarterColumns
+        });
+        quarterColumns = [];
+        break;
+    }
+  });
+
+  foreCastMonthsOrder.forEach(function(month){
+    let monthSplitted = month.split('-');
+
+    let quarter = getQuarterTitle(month);
+    if(usingQuarter !== quarter) {
+      usingQuarter = quarter;
+      quarterColumns = [];
+    }
+
+    quarterColumns.push({
+      title: getMonthTitle(month),
+      type: 'currency',
+      precision: globalConfig.get('precision')?2: 0,
+      cls: 'forecast-column',
+      isMonth: true,
+      isForeCast: true,
+      currency: currency,
+      sortable: true,
+      autoWidth: true,
+      hidden: !globalConfig.get('forecast'),
+      smartIndexFn: function(data){
+        let value;
+        let values = [];
+
+        monthsOrder.forEach((month)=>{
+          let monthIndex = month.replace('-', '');
+
+          values.push(Number(data[monthIndex]));
+        });
+
+        switch(Number(monthSplitted[0])%3){
+          case 0:
+            value = mean(values);
+            break;
+          case 1:
+            value = median(values);
+            break;
+          case 2:
+            value = standardDeviation(values);
+            break;
+        }
+
+        value = Number(value.toFixed(2));
+        return value;
+      }
+    });
+
+    switch (Number(monthSplitted[0])){
+      case 3:
+      case 6:
+      case 9:
+      case 12:
+        /*
+        quarterColumns.push({
+          title: quarter,
+          type: 'currency',
+          precision: globalConfig.get('precision')?2: 0,
+          isQuarter: true,
+          isForeCast: true,
+          headerCls: 'header-cell-quarter-forecast',
+          cls: 'column-quarter-forecast',
+          hidden: !globalConfig.get('forecast'),
+          currency: currency,
+          sortable: true,
+          autoWidth: true,
+          render: function(o){
+            let value = 0;
+            let values = [];
+
+            monthsOrder.forEach((month)=>{
+              let monthIndex = month.replace('-', '');
+
+              value += Number(o.data[monthIndex]);
+              values.push(Number(o.data[monthIndex]));
+            });
+
+            o.value = Number((3*value/month.length).toFixed(2));
+
+            return o;
+          }
+        });
+         */
+
+        columns.push({
+          title: quarter,
+          headerCls: 'header-cell-quarter-forecast',
+          columns: quarterColumns
+        });
+        quarterColumns = [];
+        break;
+    }
+  });
+
+  yearsOrder.forEach((year)=>{
+    data[0][year] = years[year];
+
+    columns.push({
+      title: year,
+      type: 'currency',
+      precision: globalConfig.get('precision')?2: 0,
+      isAnnual: true,
+      headerCls: 'header-cell-annual',
+      currency: currency,
+      sortable: true,
+      index: year,
+      align: 'center',
+      rightLocked: true,
+      autoWidth: true
+    });
+  });
+
+  return data;
+}
+
+function generateForeCastMonths(monthsOrder){
+  let splitted = monthsOrder[monthsOrder.length - 1].split('-'),
+    month = splitted[0],
+    year = splitted[1],
+    fMonthsOrder = [];
+
+  let i = 0,
+    iL = 3,
+    fMonth = month,
+    fYear = year;
+
+  for(;i<iL;i++){
+    fMonth++;
+
+    if(fMonth > 12){
+      fMonth = 1;
+      fYear++;
+    }
+
+    fMonthsOrder.push(fMonth + '-' + fYear);
   }
 
-  let sortedGroups = sortByAmount(unsortedGroups);
-
-  return sortedGroups;
+  return fMonthsOrder;
 }
 
 initializeBlock(() => <App />);

@@ -24,13 +24,13 @@ function compareDate(a, b) {
 function getMonthTitle(month){
   let monthSplitted = month.split('-');
 
-  return Fancy.i18n.en.date.months[monthSplitted[0]] + ' ' + monthSplitted[1].slice(-2);
+  return Fancy.i18n.en.date.months[monthSplitted[0] - 1] + ' ' + monthSplitted[1].slice(-2);
 }
 
 function getQuarterTitle(month){
   let monthSplitted = month.split('-');
 
-  return monthsQuarter[monthSplitted[0]] + ' ' + monthSplitted[1].slice(-2);
+  return monthsQuarter[monthSplitted[0] - 1] + ' ' + monthSplitted[1].slice(-2);
 }
 
 export {
