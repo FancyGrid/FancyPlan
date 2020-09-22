@@ -617,7 +617,7 @@ function generateForeCastMonths(monthsOrder){
     fMonthsOrder = [];
 
   let i = 0,
-    iL = 3,
+    iL = 12,
     fMonth = month,
     fYear = year;
 
